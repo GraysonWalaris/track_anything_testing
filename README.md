@@ -9,9 +9,11 @@ This repo provides an easy testing environment for the track anything algorithm.
 
 ## Thermal
 UAV
+
 ![alt text](https://github.com/GraysonWalaris/track_anything_testing/blob/main/test_results/thermal_uav_tracking.gif)
 Bird
 Left (Untracked)                 Right (Tracked)
+
 ![alt text](https://github.com/GraysonWalaris/track_anything_testing/blob/main/test_results/thermal_bird_11.gif)
 ![alt text](https://github.com/GraysonWalaris/track_anything_testing/blob/main/test_results/thermal_bird_11_tracking.gif)
 
