@@ -1,5 +1,5 @@
 # __pycache__/
-# .vscode/
+.vscode/
 # docs/
 *.pth
 # *.mp4
@@ -9,4 +9,8 @@
 # *.npy
 # images/
 # test_sample/
+labels/
 result/
+frames/
+masks/
+test_sample/

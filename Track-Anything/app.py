@@ -16,10 +16,14 @@ import torch
 from tools.painter import mask_painter
 import psutil
 import time
+import glob
+import argparse
 try: 
     from mmcv.cnn import ConvModule
 except:
     os.system("mim install mmcv")
+
+get_images = True
 
 # download checkpoints
 def download_checkpoint(url, folder, filename):
@@ -79,6 +83,14 @@ def get_frames_from_video(video_input, video_state):
     Return 
         [[0:nearest_frame], [nearest_frame:], nearest_frame]
     """
+    # clear out any leftover images
+    frames = glob.glob('frames/*.png')
+    masks = glob.glob('masks/*.png')
+    for mask in masks:
+        os.remove(mask)
+    for frame in frames:
+        os.remove(frame)
+
     video_path = video_input
     frames = []
     user_name = time.time()
@@ -155,6 +167,75 @@ def get_resize_ratio(resize_ratio_slider, interactive_state):
 
     return interactive_state
 
+def create_video(image_folder, video_name):
+
+    images = glob.glob(os.path.join(image_folder, '*.png'))
+    frame = cv2.imread(os.path.join(image_folder, images[0]))
+    height, width, layers = frame.shape
+
+    video = cv2.VideoWriter(video_name, 0, 1, (width,height))
+
+    for image in images:
+        video.write(cv2.imread(os.path.join(image_folder, image)))
+
+    cv2.destroyAllWindows()
+    video.release()
+
+def plot_bounding_boxes(video_name):
+
+    if not os.path.exists(os.path.join('labels', video_name)):
+        os.mkdir(os.path.join('labels', video_name))
+
+    masks = glob.glob('masks/*.png')
+    frames = glob.glob('frames/*png')
+    masks.sort()
+    frames.sort()
+
+    frame = cv2.imread(frames[0])
+    height, width, layers = frame.shape
+    video_path = os.path.join('labels', video_name, video_name+'.avi')
+    video = cv2.VideoWriter(filename=video_path,  
+                            fourcc=cv2.VideoWriter_fourcc(*'DIVX'),           
+                            fps=30,                                        
+                            frameSize=(width, height))
+    labels = open(os.path.join('labels', video_name, video_name+'_labels.txt'), 'w')
+    for idx in range(len(masks)):
+        mask = masks[idx]
+        frame = frames[idx]
+
+        # get the contours and find the bounding box from each image mask
+        # read image
+        mask_img = cv2.imread(mask)
+        frame_img = cv2.imread(frame)
+        # convert to grayscale
+        gray = cv2.cvtColor(mask_img,cv2.COLOR_BGR2GRAY)
+
+        # threshold
+        thresh = cv2.threshold(gray,128,255,cv2.THRESH_BINARY)[1]
+
+        # get contours
+        result = frame_img.copy()
+        contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = contours[0] if len(contours) == 2 else contours[1]
+        for cntr in contours:
+            x,y,w,h = cv2.boundingRect(cntr)
+            labels.writelines('{:4}, {:4}, {:4}, {:4}'.format(str(x), str(y), str(w), str(h)))
+            labels.write('\n')
+            # plot the bounding box in the true image frame
+            cv2.rectangle(result, (x, y), (x+w, y+h), (0, 0, 255), 2)
+
+        # save resulting image
+        if get_images:
+            cv2.imwrite('labels/{}/label{}.jpg'.format(video_name, str(idx).zfill(5)), cv2.cvtColor(result, cv2.COLOR_BGR2RGB))
+
+        # add to video
+        video.write(cv2.cvtColor(result, cv2.COLOR_BGR2RGB))
+
+    # cleanup
+    labels.close()
+    cv2.destroyAllWindows()
+    video.release()
+
 # use sam to get the mask
 def sam_refine(video_state, point_prompt, click_state, interactive_state, evt:gr.SelectData):
     """
@@ -228,12 +309,20 @@ def show_mask(video_state, interactive_state, mask_dropdown):
 
 # tracking vos
 def vos_tracking_video(video_state, interactive_state, mask_dropdown):
+    start_frame = video_state['select_frame_number']
+    video_name = video_state['video_name'].split(".")[0]
+    
     operation_log = [("",""), ("Track the selected masks, and then you can select the masks for inpainting.","Normal")]
     model.xmem.clear_memory()
     if interactive_state["track_end_number"]:
         following_frames = video_state["origin_images"][video_state["select_frame_number"]:interactive_state["track_end_number"]]
     else:
         following_frames = video_state["origin_images"][video_state["select_frame_number"]:]
+
+    # added by grayson
+    # saves unprocessed images
+    for idx, frame in enumerate(following_frames):
+        cv2.imwrite('frames/frame{}.png'.format(str(idx+start_frame).zfill(5)), frame)
 
     if interactive_state["multi_mask"]["masks"]:
         if len(mask_dropdown) == 0:
@@ -254,6 +343,16 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
         operation_log = [("Error! Please add at least one mask to track by clicking the left image.","Error"), ("","")]
         # return video_output, video_state, interactive_state, operation_error
     masks, logits, painted_images = model.generator(images=following_frames, template_mask=template_mask)
+
+    # added by grayson
+    # saves the calculated masks for the image
+    for idx, mask in enumerate(masks):
+        mask = mask * 240
+        cv2.imwrite('masks/mask{}.png'.format(str(idx+start_frame).zfill(5)), mask)
+
+    # creates labeled images
+    plot_bounding_boxes(video_name)
+
     # clear GPU memory
     model.xmem.clear_memory()
 
