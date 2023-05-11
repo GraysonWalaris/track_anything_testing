@@ -19,6 +19,7 @@ Load your images and manually add the initial mask following the original tutori
 UAV
 
 ![alt text](https://github.com/GraysonWalaris/track_anything_testing/blob/main/test_results/thermal_uav_tracking.gif)
+
 Bird
 
 Left (Untracked)                 Right (Tracked)
